@@ -1,0 +1,33 @@
+;; Filename: FaultResponder.tlk
+;; Contract B: Receives the task request and immediately responds with a fault (error).
+;; 合约 B：接收任务请求并立即响应一个故障 (错误)。
+
+#include "stdlib.tlk"
+
+;; Internal function that executes the fault
+() initiate_fault_protocol() impure {
+    
+    ;; Check flags to ignore bounces
+    slice msg_slice = in_msg_full().begin_parse(); 
+    int flags = msg_slice.load_uint(6);
+    
+    if (flags & 1) {
+        "FaultResponder: Received a bounce, ignoring." print;
+        return;
+    }
+    
+    ;; --- RichBounce Trigger ---
+    
+    "FaultResponder: Task received. Initiating fault protocol (Error Code 0xFACE)." print;
+    
+    ;; **Action:** Use throw with a new unique hexadecimal error code (0xFACE)
+    ;; This triggers the RichBounce mechanism back to the sender (TaskRequester).
+    throw(0xFACE); 
+    
+    ;; Execution halts here.
+}
+
+;; Standard entry point
+() recv_internal(int balance, int msg_value, cell in_msg_full, cell in_msg_body) impure {
+    initiate_fault_protocol();
+}
