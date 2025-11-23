@@ -1,0 +1,64 @@
+;; Filename: TaskRequester.tlk
+;; Contract A: Sends a Task Request and is responsible for catching the Fault Response (RichBounce).
+;; 合约 A：发送一个任务请求 (Task Request)，并负责捕获故障响应 (RichBounce)。
+
+#include "stdlib.tlk"
+
+;; RichBounce Fault Handler
+() handle_fault_response(cell fault_data) impure inline {
+    
+    ;; Store the incoming RichBounce cell in c6 for verification
+    c6 = fault_data;
+    
+    ;; Log the successful handling
+    "TaskRequester: Fault response (RichBounce) captured. Request failed as expected." print;
+    
+    ;; Analyze the error OP code (usually 0xFFFFFFFF for RichBounce)
+    slice data_s = fault_data.begin_parse();
+    int op_code = data_s.load_uint(32); 
+    "Fault Op Code:" print_int; op_code print_int;
+    
+    return;
+}
+
+;; Main receiver function
+() recv_internal(int balance, int msg_value, cell in_msg_full, cell in_msg_body) impure {
+    
+    ;; Step 1: Check for Fault Response (Bounce)
+    slice header_slice = in_msg_full.begin_parse();
+    int flags = header_slice.load_uint(6);
+    
+    if (flags & 1) {
+        ;; Process the RichBounce
+        handle_fault_response(in_msg_body);
+        return;
+    }
+    
+    ;; --- Step 2: Send Task Request ---
+    
+    ;; Target address B (Unique Placeholder: 0xBADFADE0)
+    cell target_b_addr_cell = begin_cell().store_uint(0xBADFADE0, 32).end_cell(); 
+    slice target_b_addr = target_b_addr_cell.begin_parse();
+
+    ;; Create the request body with a unique op code (0xDEADBEEF)
+    cell request_body = begin_cell()
+        .store_uint(0xDEADBEEF, 32) ;; Unique Request op code
+        .store_ref(in_msg_body)     ;; Embed the original payload as a reference
+        .end_cell();
+
+    ;; Send the message to B. 
+    ;; Use Mode 10 (8 | 2): 8 for returning message value on error, 2 for keeping the value and returning gas. Bounceable by default.
+    send_raw_message(
+        begin_cell()
+            .store_slice(target_b_addr)
+            .store_coins(10000) ;; Send 0.00001 TON
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(0, 1) ;; no init
+            .store_uint(0, 1) ;; no data
+            .store_ref(request_body)
+        .end_cell(), 
+        10 
+    );
+
+    "TaskRequester: Request sent (OP: 0xDEADBEEF). Awaiting fault response." print;
+}
